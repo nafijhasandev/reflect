@@ -16,6 +16,8 @@ import asyncio
 import logging
 import sys
 
+import config
+
 
 def _setup_logging() -> None:
     """Configure logging to show timestamps, level, and module name."""
@@ -24,13 +26,17 @@ def _setup_logging() -> None:
         format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
         datefmt="%H:%M:%S",
     )
+    # The development reloader watches this project, including local logs.
+    # Suppress watchfiles' per-change INFO messages so log writes do not feed
+    # back into another log message for every filesystem event.
+    logging.getLogger("watchfiles.main").setLevel(logging.WARNING)
 
 
 def _cmd_ingest(args: argparse.Namespace) -> None:
     """Run the ingestion pipeline to process the PDF."""
     from ingestion.pipeline import run_ingestion
 
-    run_ingestion(force=args.force)
+    run_ingestion(force=args.force, book=args.book)
 
 
 def _cmd_query(args: argparse.Namespace) -> None:
@@ -55,14 +61,14 @@ def _cmd_query(args: argparse.Namespace) -> None:
     print("Loading components...")
 
     embedding_engine = EmbeddingEngine()
-    vector_store = VectorStore()
+    vector_store = VectorStore(args.book)
     vector_store.require_cosine()
-    bm25_index = BM25Index.load(config.BM25_INDEX_PATH)
+    bm25_index = BM25Index.load(config.book_bm25_path(args.book))
     retriever = HybridRetriever(vector_store, bm25_index, embedding_engine)
     reranker = Reranker()
     llm_client = LLMClient()
-    query_expander = QueryExpander(llm_client)
-    engine = QueryEngine(retriever, reranker, llm_client, query_expander)
+    query_expander = QueryExpander(llm_client, args.book)
+    engine = QueryEngine(retriever, reranker, llm_client, query_expander, args.book)
 
     print("Running query pipeline...\n")
     result = asyncio.run(engine.query(question))
@@ -102,7 +108,10 @@ def _cmd_serve(args: argparse.Namespace) -> None:
         "web.app:app",
         host=config.WEB_HOST,
         port=config.WEB_PORT,
-        reload=False,
+        reload=True,
+        reload_dirs=[str(config.PROJECT_ROOT)],
+        reload_excludes=[str(config.PROJECT_ROOT / "venv"),
+                         str(config.DATA_DIR), "*.log"],
         log_level="info",
     )
 
@@ -112,7 +121,7 @@ def main() -> None:
     _setup_logging()
 
     parser = argparse.ArgumentParser(
-        description="Ask Atomic Habits - RAG System",
+        description="Ask questions about indexed books - RAG System",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -125,6 +134,8 @@ def main() -> None:
         "--force", action="store_true",
         help="Re-ingest even if data already exists"
     )
+    ingest_parser.add_argument("--book", choices=list(config.BOOKS),
+                               default="atomic_habits", help="Book to ingest")
 
     # query
     query_parser = subparsers.add_parser(
@@ -133,6 +144,8 @@ def main() -> None:
     query_parser.add_argument(
         "question", nargs="+", help="The question to ask"
     )
+    query_parser.add_argument("--book", choices=list(config.BOOKS),
+                              default="atomic_habits", help="Book to query")
 
     # serve
     subparsers.add_parser("serve", help="Start the web UI server")

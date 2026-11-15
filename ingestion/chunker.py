@@ -64,7 +64,7 @@ class Chunk:
 _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
 
 
-def chunk_pages(pages: list[Page]) -> list[Chunk]:
+def chunk_pages(pages: list[Page], book: str = "atomic_habits") -> list[Chunk]:
     """Split pages into overlapping chunks with metadata.
 
     This is the main entry point for chunking. It processes the list of pages
@@ -74,6 +74,8 @@ def chunk_pages(pages: list[Page]) -> list[Chunk]:
 
     Args:
         pages: List of Page objects from pdf_processor.extract_pages().
+        book: Book identifier. The Bookey Tiny Habits PDF has dedicated
+            summary, quotes, and Q&A boundaries.
 
     Returns:
         A list of Chunk objects ready for embedding.
@@ -92,14 +94,16 @@ def chunk_pages(pages: list[Page]) -> list[Chunk]:
         len(pages), chunk_size, chunk_overlap,
     )
 
-    # Build paragraph blocks with metadata attached to each one
-    blocks = _build_paragraph_blocks(pages)
-    logger.info("Split into %d paragraph blocks", len(blocks))
+    if book == "tiny_habits" and any("Written by Bookey" in page.text for page in pages):
+        from ingestion.tiny_habits import chunk_bookey_summary
 
-    if not blocks:
-        return []
-
-    chunks = _accumulate_chunks(blocks, chunk_size, chunk_overlap)
+        chunks = chunk_bookey_summary(pages, chunk_size, chunk_overlap)
+    else:
+        blocks = _build_paragraph_blocks(pages)
+        logger.info("Split into %d paragraph blocks", len(blocks))
+        if not blocks:
+            return []
+        chunks = _accumulate_chunks(blocks, chunk_size, chunk_overlap)
 
     # A title alone is not useful retrieval context when its topic has body text.
     topic_pages_with_content = {
@@ -113,6 +117,23 @@ def chunk_pages(pages: list[Page]) -> list[Chunk]:
         if chunk.text.strip() != chunk.section
         or (chunk.chapter, chunk.section, chunk.page_start) not in topic_pages_with_content
     ]
+    if book == "tiny_habits":
+        chunks = [chunk for chunk in chunks if chunk.text.strip() != chunk.section]
+    if book == "power_of_now":
+        chunks = [chunk for chunk in chunks
+                  if not (len(chunk.text) < 110 and chunk.text.isupper())]
+    if book == "power_of_habit":
+        chunks = [
+            chunk for index, chunk in enumerate(chunks)
+            if len(chunk.text) >= 200 or not any(
+                neighbor.chapter == chunk.chapter
+                and neighbor.section == chunk.section
+                and len(neighbor.text) > len(chunk.text)
+                and chunk.text in neighbor.text
+                for neighbor in chunks[max(0, index - 1): index]
+                + chunks[index + 1: index + 2]
+            )
+        ]
 
     occurrences: dict[str, int] = {}
     for chunk in chunks:

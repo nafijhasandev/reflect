@@ -34,10 +34,16 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import config
-from core.citations import format_cited_answer
+from core.citations import filter_web_citations, format_cited_answer
 from core.context_builder import build_context, build_prompt
+from core.general_answer import (answer_general, answer_general_stream,
+                                 general_prompt, is_explicit_book_request,
+                                 needs_web_search)
 from core.query_classifier import classify_query
-from core.scope_checker import OUT_OF_SCOPE_ANSWER, is_in_scope
+from core.query_spelling import repair_book_typos
+from core.scope_checker import is_in_scope
+from core.social_reply import social_reply
+from core.web_search import search_web
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +68,7 @@ class QueryEngine:
         reranker: Any,
         llm_client: Any,
         query_expander: Any,
+        book: str = "atomic_habits",
     ) -> None:
         """Store references to each pipeline component.
 
@@ -76,6 +83,7 @@ class QueryEngine:
         self.reranker = reranker
         self.llm_client = llm_client
         self.query_expander = query_expander
+        self.book = book
 
     async def query(
         self, question: str, top_k: int | None = None
@@ -104,59 +112,63 @@ class QueryEngine:
         timing: dict[str, float] = {}
         total_start = time.monotonic()
 
-        if not is_in_scope(question):
+        greeting = social_reply(question, self.book)
+        if greeting is not None:
             return {
-                "answer": OUT_OF_SCOPE_ANSWER,
+                "answer": greeting,
                 "sources": [],
-                "query_type": "out_of_scope",
+                "query_type": "social",
                 "timing": {"total": time.monotonic() - total_start},
             }
 
+        search_question = repair_book_typos(question)
+        if not is_in_scope(search_question, self.book):
+            return await answer_general(search_question, self.llm_client)
+
         # Step 1: Classify the query
         step_start = time.monotonic()
-        query_type, classification_reason = classify_query(question)
+        query_type, classification_reason = classify_query(search_question)
         top_k = top_k if top_k is not None else config.QUERY_TOP_K[query_type]
         timing["classify"] = time.monotonic() - step_start
         logger.info("Query type: %s (%s)", query_type, classification_reason)
 
         # Step 2: Expand the query (skip if LLM is unavailable)
         step_start = time.monotonic()
-        expanded_queries = await self._try_expand(question)
+        expanded_queries = await self._try_expand(search_question)
         timing["expand"] = time.monotonic() - step_start
 
         # Step 3: Retrieve chunks for each expanded query
         step_start = time.monotonic()
-        retrieval_queries = _retrieval_queries(question, query_type, expanded_queries)
+        retrieval_queries = _retrieval_queries(search_question, query_type, expanded_queries)
         all_chunks = self._retrieve_for_queries(retrieval_queries)
         timing["retrieve"] = time.monotonic() - step_start
 
         if not all_chunks:
-            timing["total"] = time.monotonic() - total_start
-            logger.warning("No chunks retrieved for question: '%.80s'", question)
-            return {
-                "answer": "I could not find any relevant passages for your question.",
-                "sources": [],
-                "query_type": query_type,
-                "timing": timing,
-            }
+            return await answer_general(search_question, self.llm_client)
 
         # Step 4: Rerank combined results
         step_start = time.monotonic()
-        reranked_chunks = self.reranker.rerank(question, all_chunks, top_n=top_k)
+        reranked_chunks = self.reranker.rerank(search_question, all_chunks, top_n=top_k)
         timing["rerank"] = time.monotonic() - step_start
 
         # Step 5: Build context
         step_start = time.monotonic()
         context_str = build_context(reranked_chunks)
-        messages = build_prompt(question, context_str, query_type)
+        explicit_book = is_explicit_book_request(search_question)
+        web_sources = await search_web(search_question) if needs_web_search(search_question) else []
+        messages = (build_prompt(search_question, context_str, query_type, self.book)
+                    if explicit_book else general_prompt(search_question, web_sources, context_str))
         timing["build_context"] = time.monotonic() - step_start
 
         # Prepare source metadata for the response
-        sources = _extract_sources(reranked_chunks)
+        sources = [*_extract_sources(reranked_chunks, self.book), *web_sources]
 
         # Step 6: Generate answer via LLM
         step_start = time.monotonic()
-        answer = await self._try_generate(messages, sources)
+        answer = await self._try_generate(messages, sources,
+                                          append_book_citation=explicit_book)
+        if not explicit_book:
+            answer = filter_web_citations(answer, web_sources)
         timing["generate"] = time.monotonic() - step_start
 
         timing["total"] = time.monotonic() - total_start
@@ -175,7 +187,7 @@ class QueryEngine:
 
         return {
             "answer": answer,
-            "sources": sources,
+            "sources": _answer_sources(answer, sources, explicit_book),
             "query_type": query_type,
             "timing": timing,
         }
@@ -203,48 +215,54 @@ class QueryEngine:
         timing: dict[str, float] = {}
         total_start = time.monotonic()
 
-        if not is_in_scope(question):
-            yield {"type": "metadata", "query_type": "out_of_scope"}
-            yield {"type": "chunk", "content": OUT_OF_SCOPE_ANSWER}
+        greeting = social_reply(question, self.book)
+        if greeting is not None:
+            yield {"type": "metadata", "query_type": "social"}
+            yield {"type": "chunk", "content": greeting}
             yield {"type": "sources", "sources": []}
-            yield {"type": "done", "answer": OUT_OF_SCOPE_ANSWER,
+            yield {"type": "done", "answer": greeting,
                    "timing": {"total": time.monotonic() - total_start}}
+            return
+
+        search_question = repair_book_typos(question)
+        if not is_in_scope(search_question, self.book):
+            async for event in answer_general_stream(search_question, self.llm_client):
+                yield event
             return
 
         # Steps 1-5: same as non-streaming query
         step_start = time.monotonic()
-        query_type, _ = classify_query(question)
+        query_type, _ = classify_query(search_question)
         top_k = top_k if top_k is not None else config.QUERY_TOP_K[query_type]
         timing["classify"] = time.monotonic() - step_start
 
         step_start = time.monotonic()
-        expanded_queries = await self._try_expand(question)
+        expanded_queries = await self._try_expand(search_question)
         timing["expand"] = time.monotonic() - step_start
 
         step_start = time.monotonic()
-        retrieval_queries = _retrieval_queries(question, query_type, expanded_queries)
+        retrieval_queries = _retrieval_queries(search_question, query_type, expanded_queries)
         all_chunks = self._retrieve_for_queries(retrieval_queries)
         timing["retrieve"] = time.monotonic() - step_start
 
         if not all_chunks:
-            yield {
-                "type": "error",
-                "message": "No relevant passages found for your question.",
-            }
-            yield {"type": "sources", "sources": []}
-            yield {"type": "done", "timing": {"total": time.monotonic() - total_start}}
+            async for event in answer_general_stream(search_question, self.llm_client):
+                yield event
             return
 
         step_start = time.monotonic()
-        reranked_chunks = self.reranker.rerank(question, all_chunks, top_n=top_k)
+        reranked_chunks = self.reranker.rerank(search_question, all_chunks, top_n=top_k)
         timing["rerank"] = time.monotonic() - step_start
 
         step_start = time.monotonic()
         context_str = build_context(reranked_chunks)
-        messages = build_prompt(question, context_str, query_type)
+        explicit_book = is_explicit_book_request(search_question)
+        web_sources = await search_web(search_question) if needs_web_search(search_question) else []
+        messages = (build_prompt(search_question, context_str, query_type, self.book)
+                    if explicit_book else general_prompt(search_question, web_sources, context_str))
         timing["build_context"] = time.monotonic() - step_start
 
-        sources = _extract_sources(reranked_chunks)
+        sources = [*_extract_sources(reranked_chunks, self.book), *web_sources]
 
         yield {"type": "metadata", "query_type": query_type}
 
@@ -270,8 +288,11 @@ class QueryEngine:
 
         timing["generate"] = time.monotonic() - step_start
         timing["total"] = time.monotonic() - total_start
-        yield {"type": "sources", "sources": sources}
-        answer = format_cited_answer("".join(answer_parts), sources) if answer_parts else ""
+        answer = (format_cited_answer("".join(answer_parts), sources,
+                                      append_fallback=explicit_book) if answer_parts else "")
+        if not explicit_book:
+            answer = filter_web_citations(answer, web_sources)
+        yield {"type": "sources", "sources": _answer_sources(answer, sources, explicit_book)}
         yield {"type": "done", "answer": answer, "timing": timing}
 
     async def _try_expand(self, question: str) -> list[str]:
@@ -334,7 +355,8 @@ class QueryEngine:
         )[:config.RERANK_CANDIDATES]
 
     async def _try_generate(
-        self, messages: list[dict[str, str]], sources: list[dict[str, Any]]
+        self, messages: list[dict[str, str]], sources: list[dict[str, Any]],
+        append_book_citation: bool = True,
     ) -> str:
         """Attempt LLM generation, returning a fallback message on failure.
 
@@ -357,7 +379,8 @@ class QueryEngine:
                 )
 
             answer = await self.llm_client.generate(messages, stream=False)
-            return format_cited_answer(answer, sources)
+            return format_cited_answer(answer, sources,
+                                       append_fallback=append_book_citation)
 
         except Exception:
             logger.exception("LLM generation failed")
@@ -393,7 +416,38 @@ def _retrieval_queries(
     return list(dict.fromkeys([*subjects, *expanded_queries]))
 
 
-def _extract_sources(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _answer_sources(answer: str, sources: list[dict[str, Any]], explicit_book: bool) -> list[dict[str, Any]]:
+    """Show book passages for general answers only when they were cited."""
+    if explicit_book:
+        return sources
+    chapter_pages = {
+        (match.group(1), int(match.group(2)))
+        for match in re.finditer(r"\(Chapter\s+(\d+),\s*p\.(\d+)\)", answer, re.IGNORECASE)
+    }
+    page_only = {
+        int(match.group(1))
+        for match in re.finditer(r"\(p\.(\d+)\)", answer, re.IGNORECASE)
+    }
+    selected = []
+    for source in sources:
+        if source.get("kind") == "web":
+            selected.append(source)
+            continue
+        metadata = source.get("metadata") or {}
+        try:
+            start, end = int(metadata["page_start"]), int(metadata["page_end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        chapter_match = re.search(r"\bChapter\s+(\d+)\b", str(metadata.get("chapter", "")), re.IGNORECASE)
+        chapter_number = chapter_match.group(1) if chapter_match else str(metadata.get("chapter", "")).strip()
+        if any(chapter_number == chapter and start <= page <= end for chapter, page in chapter_pages) or any(
+            start <= page <= end for page in page_only
+        ):
+            selected.append(source)
+    return selected
+
+
+def _extract_sources(chunks: list[dict[str, Any]], book: str = "atomic_habits") -> list[dict[str, Any]]:
     """Extract source metadata from reranked chunks for the response.
 
     Includes full text for the API and a short preview for the frontend.
@@ -410,7 +464,8 @@ def _extract_sources(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         metadata = chunk.get("metadata", {})
         text = chunk.get("text", "")
         sources.append({
-            "chunk_id": chunk.get("chunk_id", ""),
+            "book": book,
+            "chunk_id": str(chunk.get("chunk_id", "")).removeprefix("chunk_"),
             "chapter": metadata.get("chapter", ""),
             "pages": f"{metadata.get('page_start', '?')}-{metadata.get('page_end', '?')}",
             "text": text,

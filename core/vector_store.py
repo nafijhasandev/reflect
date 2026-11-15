@@ -48,26 +48,29 @@ class VectorStore:
         collection: The ChromaDB collection holding our embeddings.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, book: str = "atomic_habits") -> None:
         """Initialize ChromaDB client and get or create the collection.
 
         The client is configured with persistent storage at config.CHROMA_DIR
         so data survives restarts. The collection name comes from
         config.CHROMA_COLLECTION.
         """
+        if book not in config.BOOKS:
+            raise ValueError(f"Unknown book: {book}")
+        self.book = book
         logger.info("Initializing ChromaDB at: %s", config.CHROMA_DIR)
 
         self.client = chromadb.PersistentClient(
             path=str(config.CHROMA_DIR)
         )
         self.collection = self.client.get_or_create_collection(
-            name=config.CHROMA_COLLECTION,
+            name=self.book,
             configuration={"hnsw": {"space": "cosine"}},
         )
 
         logger.info(
             "ChromaDB collection '%s' ready (%d chunks stored)",
-            config.CHROMA_COLLECTION,
+            self.book,
             self.collection.count(),
         )
 
@@ -228,12 +231,12 @@ class VectorStore:
         """
         logger.warning(
             "Resetting collection '%s' - deleting all %d chunks",
-            config.CHROMA_COLLECTION,
+            self.book,
             self.collection.count(),
         )
-        self.client.delete_collection(config.CHROMA_COLLECTION)
+        self.client.delete_collection(self.book)
         self.collection = self.client.get_or_create_collection(
-            name=config.CHROMA_COLLECTION,
+            name=self.book,
             configuration={"hnsw": {"space": "cosine"}},
         )
-        logger.info("Collection '%s' recreated (empty).", config.CHROMA_COLLECTION)
+        logger.info("Collection '%s' recreated (empty).", self.book)

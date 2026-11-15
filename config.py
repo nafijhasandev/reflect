@@ -21,6 +21,63 @@ load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 # Where the source PDF lives
 PDF_PATH = PROJECT_ROOT / "Atomic Habits by James Clear.pdf.pdf"
+TINY_HABITS_PDF_PATH = PROJECT_ROOT / "tiny-habits.pdf"
+POWER_OF_HABIT_PDF_PATH = PROJECT_ROOT / "Charles-Duhigg.The-Power-of-Habit.pdf"
+POWER_OF_NOW_PDF_PATH = PROJECT_ROOT / "The Power of Now.pdf"
+STOICISM_PDF_PATH = PROJECT_ROOT / "[Jonas_Salzgeber]_The_Little_Book_of_Stoicism__Tim(z-lib.org).pdf"
+FIVE_SECOND_RULE_PDF_PATH = PROJECT_ROOT / "[Mel_Robbins]_The_5_Second_Rule__Transform_your_Li(z-lib.org).pdf"
+EMOTIONAL_INTELLIGENCE_PDF_PATH = PROJECT_ROOT / "Emotional Intelligence Why it Can Matter More Than IQ by Daniel Goleman.pdf"
+ART_OF_THINKING_CLEARLY_PDF_PATH = PROJECT_ROOT / "Rolf Dobelli - The Art of Thinking Clearly _ Better thinking, Better decision-Sceptre (Hodder _ Stoughton Ltd) (2013).pdf"
+POSITIVE_THINKING_PDF_PATH = PROJECT_ROOT / "The Power of Positive Thinking .pdf"
+SUBCONSCIOUS_MIND_PDF_PATH = PROJECT_ROOT / "The Power of Your Subconscious Mind.pdf"
+BOOKS = {
+    "atomic_habits": {"title": "Atomic Habits", "author": "James Clear"},
+    "tiny_habits": {"title": "Tiny Habits", "author": "BJ Fogg"},
+    "power_of_habit": {"title": "The Power of Habit", "author": "Charles Duhigg"},
+    "power_of_now": {"title": "The Power of Now", "author": "Eckhart Tolle"},
+    "little_book_of_stoicism": {"title": "The Little Book of Stoicism", "author": "Jonas Salzgeber"},
+    "five_second_rule": {"title": "The 5 Second Rule", "author": "Mel Robbins"},
+    "emotional_intelligence": {"title": "Emotional Intelligence", "author": "Daniel Goleman"},
+    "art_of_thinking_clearly": {"title": "The Art of Thinking Clearly", "author": "Rolf Dobelli"},
+    "positive_thinking": {"title": "The Power of Positive Thinking", "author": "Norman Vincent Peale"},
+    "subconscious_mind": {"title": "The Power of Your Subconscious Mind", "author": "Joseph Murphy"},
+}
+
+
+def book_pdf_path(book: str) -> Path:
+    if book == "atomic_habits":
+        return PDF_PATH
+    if book == "tiny_habits":
+        return TINY_HABITS_PDF_PATH
+    if book == "power_of_habit":
+        return POWER_OF_HABIT_PDF_PATH
+    if book == "power_of_now":
+        return POWER_OF_NOW_PDF_PATH
+    if book == "little_book_of_stoicism":
+        return STOICISM_PDF_PATH
+    if book == "five_second_rule":
+        return FIVE_SECOND_RULE_PDF_PATH
+    if book == "emotional_intelligence":
+        return EMOTIONAL_INTELLIGENCE_PDF_PATH
+    if book == "art_of_thinking_clearly":
+        return ART_OF_THINKING_CLEARLY_PDF_PATH
+    if book == "positive_thinking":
+        return POSITIVE_THINKING_PDF_PATH
+    if book == "subconscious_mind":
+        return SUBCONSCIOUS_MIND_PDF_PATH
+    raise ValueError(f"Unknown book: {book}")
+
+
+def book_bm25_path(book: str) -> Path:
+    if book not in BOOKS:
+        raise ValueError(f"Unknown book: {book}")
+    return BM25_INDEX_PATH if book == "atomic_habits" else DATA_DIR / f"{book}_bm25_index.pkl"
+
+
+def book_chunks_path(book: str) -> Path:
+    if book not in BOOKS:
+        raise ValueError(f"Unknown book: {book}")
+    return CHUNKS_JSON_PATH if book == "atomic_habits" else DATA_DIR / f"{book}_chunks.json"
 
 # Where generated data is stored (ChromaDB, BM25 index, etc.)
 DATA_DIR = PROJECT_ROOT / "data"
@@ -107,13 +164,14 @@ RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
-AI_GATEWAY_API_KEY = os.getenv("AI_GATEWAY_API_KEY", "").strip()
+VERCEL_API_KEY = os.getenv("VERCEL_API_KEY", "").strip()
 
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
 VERCEL_AI_MODEL = os.getenv("VERCEL_AI_MODEL", "nvidia/nemotron-3.5-lightning-free")
 
 LLM_TIMEOUT = 60
+WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "true").strip().lower() not in {"0", "false", "no"}
 
 # Temperature for generation. Lower = more focused, higher = more creative.
 LLM_TEMPERATURE = 0.3

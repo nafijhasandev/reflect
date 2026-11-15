@@ -147,7 +147,7 @@ def classify_query(query: str) -> tuple[str, str]:
     return "factual", reason
 
 
-def get_prompt_template(query_type: str) -> str:
+def get_prompt_template(query_type: str, book: str = "atomic_habits") -> str:
     """Return the system prompt template appropriate for the given query type.
 
     Each query type has a tailored system prompt that guides the LLM toward
@@ -172,7 +172,34 @@ def get_prompt_template(query_type: str) -> str:
             f"Expected one of: {list(_PROMPT_TEMPLATES.keys())}"
         )
 
+    template = _PROMPT_TEMPLATES[query_type]
+    if book == "tiny_habits":
+        template = template.replace("'Atomic Habits' by James Clear", "'Tiny Habits' by BJ Fogg")
+    elif book == "power_of_habit":
+        template = template.replace("'Atomic Habits' by James Clear", "'The Power of Habit' by Charles Duhigg")
+        template += " The source includes the prologue, Chapters 1 through 9, and the appendix. Cite chapter passages as (Chapter N, p.PDF_PAGE) and prologue or appendix passages as (p.PDF_PAGE)."
+    elif book == "power_of_now":
+        template = template.replace("'Atomic Habits' by James Clear", "'The Power of Now' by Eckhart Tolle")
+        template += " The source includes the introduction and Chapters 1 through 10. Cite chapter passages as (Chapter N, p.PDF_PAGE) and introduction passages as (p.PDF_PAGE)."
+    elif book == "little_book_of_stoicism":
+        template = template.replace("'Atomic Habits' by James Clear", "'The Little Book of Stoicism' by Jonas Salzgeber")
+        template += " The source includes the introduction, Chapters 1 through 8, and 55 numbered practices. Use the practice label in the source section when relevant. Cite chapter passages as (Chapter N, p.PDF_PAGE) and introduction passages as (p.PDF_PAGE)."
+    elif book == "five_second_rule":
+        template = template.replace("'Atomic Habits' by James Clear", "'The 5 Second Rule' by Mel Robbins")
+        template += " The source includes Chapters 1 through 17, short introductions between parts, and a closing section. Cite chapter passages as (Chapter N, p.PDF_PAGE) and other passages as (p.PDF_PAGE)."
+    elif book == "emotional_intelligence":
+        template = template.replace("'Atomic Habits' by James Clear", "'Emotional Intelligence' by Daniel Goleman")
+        template += " The source includes an introduction, Chapters 1 through 16, and six appendices. Cite chapter passages as (Chapter N, p.PDF_PAGE) and introduction or appendix passages as (p.PDF_PAGE)."
+    elif book == "art_of_thinking_clearly":
+        template = template.replace("'Atomic Habits' by James Clear", "'The Art of Thinking Clearly' by Rolf Dobelli")
+        template += " The source includes an introduction, Chapters 1 through 99 (each explaining a thinking error), and an epilogue. Cite chapter passages as (Chapter N, p.PDF_PAGE) and introduction or epilogue passages as (p.PDF_PAGE)."
+    elif book == "positive_thinking":
+        template = template.replace("'Atomic Habits' by James Clear", "'The Power of Positive Thinking' by Norman Vincent Peale")
+        template += " The source includes an introduction and Chapters 1 through 17. Cite chapter passages as (Chapter N, p.PDF_PAGE) and introduction passages as (p.PDF_PAGE)."
+    elif book == "subconscious_mind":
+        template = template.replace("'Atomic Habits' by James Clear", "'The Power of Your Subconscious Mind' by Joseph Murphy")
+        template += " The source includes ten opening sections and Chapters 1 through 20. Cite chapter passages as (Chapter N, p.PDF_PAGE) and opening passages as (p.PDF_PAGE)."
     return (
-        _PROMPT_TEMPLATES[query_type]
+        template
         + " Use Markdown bold (**...**) for main topic names and cited chapter titles."
     )

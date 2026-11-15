@@ -15,6 +15,8 @@ const StreamEvents = (() => {
             throw new Error("Invalid server event");
         }
         if (event.type === "metadata" && typeof event.query_type === "string") return event;
+        if (event.type === "book_selected" &&
+            ["atomic_habits", "tiny_habits", "power_of_habit", "power_of_now", "little_book_of_stoicism", "five_second_rule", "emotional_intelligence", "art_of_thinking_clearly", "positive_thinking", "subconscious_mind"].includes(event.book)) return event;
         if (event.type === "chunk" && typeof event.content === "string") return event;
         if (event.type === "sources" && Array.isArray(event.sources)) return event;
         if (event.type === "error" && typeof event.message === "string") return event;

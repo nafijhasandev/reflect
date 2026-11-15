@@ -1,4 +1,4 @@
-"""Hosted chat completions with ordered provider fallback."""
+"""Chat completions with ordered hosted provider fallback."""
 
 import json
 import logging
@@ -33,7 +33,7 @@ class LLMClient:
                 "Vercel AI Gateway",
                 "https://ai-gateway.vercel.sh/v1/chat/completions",
                 config.VERCEL_AI_MODEL,
-                config.AI_GATEWAY_API_KEY,
+                config.VERCEL_API_KEY,
             ),
         ]
         self._providers = [provider for provider in providers if provider[3]]
@@ -46,7 +46,7 @@ class LLMClient:
         await self._client.aclose()
 
     async def is_available(self) -> bool:
-        """Report whether at least one provider key is configured."""
+        """Report whether at least one supported provider key is configured."""
         return bool(self._providers)
 
     async def generate(
@@ -145,11 +145,31 @@ class LLMClient:
         )
         logger.warning("%s language model request failed: %s", name, reason)
 
-    async def expand_query(self, query: str) -> list[str]:
+    async def expand_query(self, query: str, book: str = "atomic_habits") -> list[str]:
         """Ask a configured provider for alternative search wording."""
+        if book == "tiny_habits":
+            book_title = "'Tiny Habits' by BJ Fogg"
+        elif book == "power_of_habit":
+            book_title = "'The Power of Habit' by Charles Duhigg"
+        elif book == "power_of_now":
+            book_title = "'The Power of Now' by Eckhart Tolle"
+        elif book == "little_book_of_stoicism":
+            book_title = "'The Little Book of Stoicism' by Jonas Salzgeber"
+        elif book == "five_second_rule":
+            book_title = "'The 5 Second Rule' by Mel Robbins"
+        elif book == "emotional_intelligence":
+            book_title = "'Emotional Intelligence' by Daniel Goleman"
+        elif book == "art_of_thinking_clearly":
+            book_title = "'The Art of Thinking Clearly' by Rolf Dobelli"
+        elif book == "positive_thinking":
+            book_title = "'The Power of Positive Thinking' by Norman Vincent Peale"
+        elif book == "subconscious_mind":
+            book_title = "'The Power of Your Subconscious Mind' by Joseph Murphy"
+        else:
+            book_title = "'Atomic Habits' by James Clear"
         expansion_prompt = (
             "You are a search query expansion assistant. Given the user's question "
-            "about a book on habit formation ('Atomic Habits' by James Clear), "
+            f"about {book_title}, "
             "generate exactly 3 alternative search queries that would help find "
             "relevant passages. Each alternative should:\n"
             "- Use different words/synonyms\n"

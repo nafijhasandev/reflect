@@ -129,12 +129,23 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     font-weight: 600;
 }
 
-.brand-logo {
+.reflect-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text);
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.09em;
+    line-height: 1;
+    background: transparent;
+}
+
+.brand-mark {
     width: 42px;
     height: 42px;
     flex: 0 0 auto;
-    object-fit: contain;
-    clip-path: circle(40% at 50% 49%);
+    font-size: 29px;
 }
 
 .new-chat {
@@ -276,12 +287,23 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
 }
 
 .pdf-panel-location strong {
+    align-self: flex-start;
     overflow: hidden;
-    color: var(--text);
+    max-width: 100%;
+    padding: 2px 5px;
+    border-radius: 3px;
+    background: #ffe36a;
+    color: #242000;
     font-size: 13px;
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.pdf-highlight-note {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 10px;
 }
 
 .pdf-close {
@@ -293,11 +315,24 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     line-height: 1;
 }
 
-.pdf-panel iframe {
-    width: 100%;
+.pdf-panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    white-space: nowrap;
+}
+
+.pdf-panel-actions a {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.pdf-native-viewer {
     flex: 1;
+    min-height: 0;
+    width: 100%;
     border: 0;
-    background: white;
+    background: #555;
 }
 
 .header {
@@ -338,6 +373,16 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
 .header-title {
     font-size: 14px;
     font-weight: 600;
+    white-space: nowrap;
+}
+
+#bookSelect {
+    max-width: 150px;
+    padding: 6px 8px;
+    border: 1px solid var(--border, #555);
+    border-radius: 7px;
+    color: inherit;
+    background: var(--surface, #242424);
 }
 
 .header-actions {
@@ -432,13 +477,11 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     padding: 0 0 6vh;
 }
 
-.welcome-logo {
-    display: block;
+.welcome-mark {
     width: 72px;
     height: 72px;
     margin: 0 auto 16px;
-    object-fit: contain;
-    clip-path: circle(40% at 50% 49%);
+    font-size: 52px;
 }
 
 .main-panel.is-empty .header {
@@ -568,9 +611,14 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
 .assistant-avatar {
     width: 32px;
     height: 32px;
-    flex: 0 0 auto;
-    object-fit: contain;
-    clip-path: circle(40% at 50% 49%);
+    flex: 0 0 32px;
+    font-size: 23px;
+}
+
+.answer-assistant-label {
+    margin-bottom: 6px;
+    color: var(--muted);
+    font-size: 11px;
 }
 
 .message.assistant .bubble {
@@ -601,6 +649,12 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
 .citation-link:hover,
 .source-link:hover {
     text-decoration-color: currentColor;
+}
+
+.citation-book {
+    color: var(--muted);
+    font-size: 0.85em;
+    white-space: nowrap;
 }
 
 .sources {
@@ -891,7 +945,23 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible {
     }
 
     .header-left {
-        gap: 8px;
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr);
+        gap: 4px 8px;
+        flex: 1;
+    }
+
+    .header-title {
+        grid-column: 2;
+        grid-row: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    #bookSelect {
+        grid-column: 2;
+        grid-row: 2;
+        width: min(150px, 100%);
     }
 
     .status {

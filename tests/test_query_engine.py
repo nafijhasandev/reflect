@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, Mock, call
 import pytest
 
 import config
-from core.query_engine import QueryEngine
-from core.scope_checker import OUT_OF_SCOPE_ANSWER
+from core.query_engine import QueryEngine, _extract_sources
+from core.social_reply import social_reply
 
 
 def _chunk(chunk_id: str, text: str, page: int) -> dict:
@@ -20,6 +20,132 @@ def _chunk(chunk_id: str, text: str, page: int) -> dict:
         },
         "rerank_score": 0.9,
     }
+
+
+def test_source_ids_match_chunk_snapshot_for_pdf_highlighting():
+    source = _extract_sources([_chunk("chunk_a1b2c3d4e5f6_1", "Source text", 25)],
+                              "emotional_intelligence")[0]
+    assert source["chunk_id"] == "a1b2c3d4e5f6_1"
+    assert source["book"] == "emotional_intelligence"
+
+
+@pytest.mark.parametrize(
+    ("message", "prefix"),
+    [
+        ("Hi!", "Hello!"),
+        ("hello there", "Hello!"),
+        ("helllo", "Hello!"),
+        ("good morning", "Hello!"),
+        ("Thank you so much.", "You're welcome!"),
+        ("please", "Of course."),
+    ],
+)
+def test_standalone_courtesy_gets_an_invitation(message, prefix):
+    reply = social_reply(message, "tiny_habits")
+    assert reply.startswith(prefix)
+    assert reply.endswith("What would you like to know?")
+
+
+@pytest.mark.parametrize("message", [
+    "Please explain habit stacking.",
+    "Hi, what is an anchor moment?",
+    "What is the capital of France?",
+])
+def test_real_questions_do_not_become_social_replies(message):
+    assert social_reply(message) is None
+
+
+def test_social_query_skips_retrieval_and_generation():
+    def finish_immediate(coroutine):
+        try:
+            coroutine.send(None)
+        except StopIteration as finished:
+            return finished.value
+        raise AssertionError("Social replies must not await the RAG pipeline")
+
+    retriever, reranker, llm_client, query_expander = Mock(), Mock(), Mock(), Mock()
+    engine = QueryEngine(retriever, reranker, llm_client, query_expander, "tiny_habits")
+
+    result = finish_immediate(engine.query("hello"))
+    stream = engine.query_stream("thank you")
+    events = [finish_immediate(stream.__anext__()) for _ in range(4)]
+
+    assert result["query_type"] == "social"
+    assert result["sources"] == []
+    assert "What would you like to know?" in result["answer"]
+    assert [event["type"] for event in events] == ["metadata", "chunk", "sources", "done"]
+    assert events[0]["query_type"] == "social"
+    assert events[-1]["answer"].startswith("You're welcome!")
+    assert events[2]["sources"] == []
+    retriever.retrieve.assert_not_called()
+    reranker.rerank.assert_not_called()
+    llm_client.is_available.assert_not_called()
+    query_expander.expand.assert_not_called()
+
+
+def test_misspelled_book_question_reaches_corrected_retrieval():
+    def finish_immediate(coroutine):
+        try:
+            coroutine.send(None)
+        except StopIteration as finished:
+            return finished.value
+        raise AssertionError("Mocked query should finish without external calls")
+
+    passage = _chunk("habit", "Small actions can support a new habit.", 42)
+    retriever, reranker = Mock(), Mock()
+    retriever.retrieve.return_value = [passage]
+    reranker.rerank.return_value = [passage]
+    engine = QueryEngine(retriever, reranker, Mock(), Mock(), "five_second_rule")
+    corrected = "what is the minimum prod to overcome a habit"
+    engine._try_expand = AsyncMock(return_value=[corrected])
+    engine._try_generate = AsyncMock(return_value="Book-grounded answer (Chapter 3, p.42).")
+
+    result = finish_immediate(engine.query("what is the minimum prod to overcme a hbit"))
+
+    assert result["query_type"] != "out_of_scope"
+    assert result["sources"]
+    retriever.retrieve.assert_called_once_with(corrected, top_k=config.RERANK_CANDIDATES)
+    assert reranker.rerank.call_args.args[0] == corrected
+    assert corrected in str(engine._try_generate.call_args.args[0])
+
+
+def test_misspelled_stream_question_reaches_corrected_retrieval():
+    passage = _chunk("habit", "Small actions can support a new habit.", 42)
+    retriever, reranker = Mock(), Mock()
+    retriever.retrieve.return_value = [passage]
+    reranker.rerank.return_value = [passage]
+    engine = QueryEngine(retriever, reranker, Mock(), Mock(), "five_second_rule")
+    corrected = "what is the minimum prod to overcome a habit"
+    engine._try_expand = AsyncMock(return_value=[corrected])
+
+    first_event = engine.query_stream("what is the minimum prod to overcme a hbit").__anext__()
+    try:
+        first_event.send(None)
+    except StopIteration as finished:
+        assert finished.value["type"] == "metadata"
+        assert finished.value["query_type"] != "out_of_scope"
+    else:
+        raise AssertionError("Mocked retrieval should finish without external calls")
+    retriever.retrieve.assert_called_once_with(corrected, top_k=config.RERANK_CANDIDATES)
+
+
+@pytest.mark.asyncio
+async def test_tiny_habits_query_uses_its_prompt_and_source_book():
+    passage = _chunk("tiny", "An anchor moment prompts a tiny behavior.", 23)
+    passage["metadata"]["chapter"] = ""
+    retriever, reranker, llm_client, query_expander = Mock(), Mock(), Mock(), Mock()
+    retriever.retrieve.return_value = [passage]
+    reranker.rerank.return_value = [passage]
+    llm_client.is_available = AsyncMock(return_value=True)
+    llm_client.generate = AsyncMock(return_value="Use an anchor moment.")
+    query_expander.expand = AsyncMock(return_value=["What is an anchor moment?"])
+    engine = QueryEngine(retriever, reranker, llm_client, query_expander, "tiny_habits")
+
+    result = await engine.query("What is an anchor moment?")
+
+    assert result["sources"][0]["book"] == "tiny_habits"
+    assert result["answer"] == "Use an anchor moment (p.23)."
+    assert "'Tiny Habits' by BJ Fogg" in llm_client.generate.call_args.args[0][0]["content"]
 
 
 def test_expanded_queries_send_only_top_fifteen_unique_candidates_to_reranker():
@@ -207,34 +333,54 @@ async def test_comparison_retrieves_each_subject_separately():
     assert reranker.rerank.call_args.kwargs["top_n"] == 5
 
 
-@pytest.mark.asyncio
-async def test_unrelated_query_skips_every_pipeline_component():
+def test_unrelated_query_skips_book_pipeline(monkeypatch):
     retriever, reranker, llm_client, query_expander = Mock(), Mock(), Mock(), Mock()
     engine = QueryEngine(retriever, reranker, llm_client, query_expander)
+    general = AsyncMock(return_value={
+        "answer": "Paris is the capital of France.", "sources": [],
+        "query_type": "general", "timing": {"total": 0.0},
+    })
+    monkeypatch.setattr("core.query_engine.answer_general", general)
 
-    result = await engine.query("What is the capital of France?")
+    try:
+        engine.query("What is the capital of France?").send(None)
+    except StopIteration as finished:
+        result = finished.value
 
-    assert result["answer"] == OUT_OF_SCOPE_ANSWER
+    assert result["answer"] == "Paris is the capital of France."
     assert result["sources"] == []
-    assert result["query_type"] == "out_of_scope"
+    assert result["query_type"] == "general"
     retriever.retrieve.assert_not_called()
     reranker.rerank.assert_not_called()
     llm_client.is_available.assert_not_called()
     query_expander.expand.assert_not_called()
+    general.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_unrelated_stream_returns_answer_without_retrieval():
+def test_unrelated_stream_returns_answer_without_retrieval(monkeypatch):
     retriever, reranker, llm_client, query_expander = Mock(), Mock(), Mock(), Mock()
     engine = QueryEngine(retriever, reranker, llm_client, query_expander)
+    async def general(question, client):
+        assert question == "What is the capital of France?"
+        yield {"type": "metadata", "query_type": "general"}
+        yield {"type": "chunk", "content": "Paris is the capital of France."}
+        yield {"type": "sources", "sources": []}
+        yield {"type": "done", "answer": "Paris is the capital of France."}
+    monkeypatch.setattr("core.query_engine.answer_general_stream", general)
 
-    events = [event async for event in engine.query_stream("What is the capital of France?")]
+    stream = engine.query_stream("What is the capital of France?")
+    events = []
+    for _ in range(4):
+        try:
+            stream.__anext__().send(None)
+        except StopIteration as finished:
+            events.append(finished.value)
 
     assert [event["type"] for event in events] == [
         "metadata", "chunk", "sources", "done"
     ]
     assert events[2]["sources"] == []
-    assert events[1]["content"] == OUT_OF_SCOPE_ANSWER
+    assert events[1]["content"] == "Paris is the capital of France."
     retriever.retrieve.assert_not_called()
     reranker.rerank.assert_not_called()
     llm_client.is_available.assert_not_called()

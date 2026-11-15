@@ -1,6 +1,6 @@
 """Tests for citation formatting against retrieved passage metadata."""
 
-from core.citations import format_cited_answer
+from core.citations import filter_web_citations, format_cited_answer
 
 
 def _source(chapter: str = "Chapter 5: The Best Way to Start a New Habit") -> dict:
@@ -51,3 +51,24 @@ def test_does_not_invent_citation_without_valid_metadata():
     assert format_cited_answer("An introduction.", [source]) == "An introduction."
     assert format_cited_answer("An introduction.", []) == "An introduction."
     assert format_cited_answer("", [_source()]) == ""
+
+
+def test_tiny_habits_uses_page_citation_without_detected_chapter():
+    source = {"book": "tiny_habits", "metadata": {
+        "chapter": "", "page_start": 23, "page_end": 24,
+    }}
+    assert format_cited_answer("Start small.", [source]) == "Start small (p.23)."
+    assert format_cited_answer("Start small (p.24).", [source]) == "Start small (p.24)."
+
+
+def test_general_answer_does_not_gain_an_unrelated_book_citation():
+    assert format_cited_answer(
+        "It varies from person to person.", [_source()], append_fallback=False
+    ) == "It varies from person to person."
+
+
+def test_web_citations_only_keep_returned_search_results():
+    sources = [{"kind": "web", "index": 1, "url": "https://example.org"}]
+    assert filter_web_citations("Evidence [1] supports this [2].", sources) == (
+        "Evidence [1] supports this."
+    )

@@ -36,7 +36,7 @@ from ingestion.pdf_processor import extract_pages
 logger = logging.getLogger(__name__)
 
 
-def run_ingestion(force: bool = False) -> None:
+def run_ingestion(force: bool = False, book: str = "atomic_habits") -> None:
     """Run the full ingestion pipeline from PDF to indexed knowledge base.
 
     This is the main entry point for populating the RAG system's data stores.
@@ -55,6 +55,8 @@ def run_ingestion(force: bool = False) -> None:
         FileNotFoundError: If the PDF file is missing.
         RuntimeError: If any pipeline stage fails.
     """
+    if book not in config.BOOKS:
+        raise ValueError(f"Unknown book: {book}")
     pipeline_start = time.time()
     logger.info("=" * 60)
     logger.info("Starting ingestion pipeline")
@@ -67,14 +69,14 @@ def run_ingestion(force: bool = False) -> None:
     from core.vector_store import VectorStore
 
     # --- Check if already ingested -------------------------------------------
-    vector_store = VectorStore()
+    vector_store = VectorStore() if book == "atomic_habits" else VectorStore(book=book)
 
     if not force and vector_store.count() > 0:
         vector_store.require_cosine()
         logger.info(
             "ChromaDB collection '%s' already has %d documents. "
             "Skipping ingestion. Use force=True to re-ingest.",
-            config.CHROMA_COLLECTION,
+            book,
             vector_store.count(),
         )
         return
@@ -83,7 +85,39 @@ def run_ingestion(force: bool = False) -> None:
     step_start = time.time()
     logger.info("Step 1/5: Extracting text from PDF...")
 
-    pages = extract_pages()
+    pages = extract_pages() if book == "atomic_habits" else extract_pages(config.book_pdf_path(book))
+    if book == "power_of_habit":
+        from ingestion.power_of_habit import prepare_power_of_habit
+
+        pages = prepare_power_of_habit(pages)
+    elif book == "power_of_now":
+        from ingestion.power_of_now import prepare_power_of_now
+
+        pages = prepare_power_of_now(pages)
+    elif book == "little_book_of_stoicism":
+        from ingestion.stoicism import prepare_stoicism
+
+        pages = prepare_stoicism(pages)
+    elif book == "five_second_rule":
+        from ingestion.five_second_rule import prepare_five_second_rule
+
+        pages = prepare_five_second_rule(pages)
+    elif book == "emotional_intelligence":
+        from ingestion.emotional_intelligence import prepare_emotional_intelligence
+
+        pages = prepare_emotional_intelligence(pages)
+    elif book == "art_of_thinking_clearly":
+        from ingestion.art_of_thinking_clearly import prepare_art_of_thinking_clearly
+
+        pages = prepare_art_of_thinking_clearly(pages)
+    elif book == "positive_thinking":
+        from ingestion.positive_thinking import prepare_positive_thinking
+
+        pages = prepare_positive_thinking(pages)
+    elif book == "subconscious_mind":
+        from ingestion.subconscious_mind import prepare_subconscious_mind
+
+        pages = prepare_subconscious_mind(pages)
 
     logger.info(
         "Step 1 complete: %d pages extracted (%.1fs)",
@@ -94,7 +128,7 @@ def run_ingestion(force: bool = False) -> None:
     step_start = time.time()
     logger.info("Step 2/5: Chunking text...")
 
-    chunks = chunk_pages(pages)
+    chunks = chunk_pages(pages) if book == "atomic_habits" else chunk_pages(pages, book=book)
     if not chunks:
         raise ValueError("No text chunks were produced from the PDF.")
 
@@ -137,7 +171,7 @@ def run_ingestion(force: bool = False) -> None:
 
     bm25_index = BM25Index()
     bm25_index.build(chunks)
-    bm25_index.save(config.BM25_INDEX_PATH)
+    bm25_index.save(config.book_bm25_path(book))
 
     logger.info(
         "Step 5 complete: BM25 index built and saved (%.1fs)",
@@ -145,19 +179,22 @@ def run_ingestion(force: bool = False) -> None:
     )
 
     # --- Save chunks JSON for debugging --------------------------------------
-    _save_chunks_json(chunks)
+    if book == "atomic_habits":
+        _save_chunks_json(chunks)
+    else:
+        _save_chunks_json(chunks, book=book)
 
     total_time = time.time() - pipeline_start
     logger.info("=" * 60)
     logger.info("Ingestion pipeline complete in %.1fs", total_time)
     logger.info(
         "  Pages: %d | Chunks: %d | Collection: %s",
-        len(pages), len(chunks), config.CHROMA_COLLECTION,
+        len(pages), len(chunks), book,
     )
     logger.info("=" * 60)
 
 
-def _save_chunks_json(chunks: list) -> None:
+def _save_chunks_json(chunks: list, book: str = "atomic_habits") -> None:
     """Save chunks to a JSON file for debugging and inspection.
 
     The JSON file contains all chunk data (text, metadata, IDs) and is written
@@ -167,7 +204,7 @@ def _save_chunks_json(chunks: list) -> None:
     Args:
         chunks: List of Chunk dataclass instances.
     """
-    output_path = config.CHUNKS_JSON_PATH
+    output_path = config.book_chunks_path(book)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     data = [asdict(chunk) for chunk in chunks]

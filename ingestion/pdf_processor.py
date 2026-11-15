@@ -72,6 +72,8 @@ _SECTION_PATTERN = re.compile(
 _HEADER_FOOTER_PATTERN = re.compile(
     r"^\s*\d{1,3}\s*$"          # standalone page numbers
     r"|^\s*atomic\s+habits\s*$"  # running book title header
+    r"|^\s*tiny\s+habits\s*$"
+    r"|^\s*b\.?\s*j\.?\s*fogg\s*$"
     r"|^\s*james\s+clear\s*$",   # running author header
     re.IGNORECASE | re.MULTILINE,
 )
@@ -265,12 +267,15 @@ def _large_heading_lines(page: fitz.Page) -> list[str]:
 
 def _detect_chapter(headings: list[str]) -> str | None:
     """Read a numbered chapter title from the first large heading lines."""
-    for index in (0, 1):
-        if index >= len(headings) or not re.fullmatch(r"[1-9]\d?", headings[index]):
-            continue
-        title = " ".join(headings[index + 1 : index + 3])
-        if title:
-            return f"Chapter {headings[index]}: {title}"
+    for index, heading in enumerate(headings[:3]):
+        titled = re.fullmatch(r"CHAPTER\s+([1-9]\d?)\s*[:.\-–]?\s+(.+)", heading, re.IGNORECASE)
+        if titled:
+            return f"Chapter {titled.group(1)}: {titled.group(2)}"
+        match = re.fullmatch(r"(?:CHAPTER\s+)?([1-9]\d?)", heading, re.IGNORECASE)
+        if match and index + 1 < len(headings):
+            title = " ".join(headings[index + 1 : index + 3])
+            if title:
+                return f"Chapter {match.group(1)}: {title}"
     return None
 
 

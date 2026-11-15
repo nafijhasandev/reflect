@@ -9,8 +9,8 @@ from core.llm_client import LLMClient
 
 async def _client_with_transport(monkeypatch, handler):
     monkeypatch.setattr(config, "GROQ_API_KEY", "groq-test-key")
+    monkeypatch.setattr(config, "VERCEL_API_KEY", "vercel-test-key")
     monkeypatch.setattr(config, "OPENROUTER_API_KEY", "openrouter-test-key")
-    monkeypatch.setattr(config, "AI_GATEWAY_API_KEY", "vercel-test-key")
     client = LLMClient()
     await client._client.aclose()
     client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -22,9 +22,10 @@ def _answer(text):
 
 
 @pytest.mark.asyncio
-async def test_no_keys_reports_unavailable_and_does_not_request(monkeypatch):
-    for name in ("GROQ_API_KEY", "OPENROUTER_API_KEY", "AI_GATEWAY_API_KEY"):
-        monkeypatch.setattr(config, name, "")
+async def test_no_keys_reports_unavailable(monkeypatch):
+    monkeypatch.setattr(config, "GROQ_API_KEY", "")
+    monkeypatch.setattr(config, "VERCEL_API_KEY", "")
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "")
     client = LLMClient()
     try:
         assert await client.is_available() is False
@@ -57,7 +58,7 @@ async def test_groq_is_primary_and_uses_configured_model(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_falls_back_to_openrouter_free(monkeypatch):
+async def test_rate_limit_falls_back_to_openrouter(monkeypatch):
     hosts = []
 
     def respond(request):
@@ -78,7 +79,7 @@ async def test_rate_limit_falls_back_to_openrouter_free(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_missing_keys_are_skipped_and_model_can_be_overridden(monkeypatch):
+async def test_missing_groq_key_is_skipped_and_model_can_be_overridden(monkeypatch):
     def respond(request):
         assert request.url.host == "openrouter.ai"
         assert b'"model":"chosen-free-model"' in request.content
@@ -86,7 +87,7 @@ async def test_missing_keys_are_skipped_and_model_can_be_overridden(monkeypatch)
 
     monkeypatch.setattr(config, "GROQ_API_KEY", "")
     monkeypatch.setattr(config, "OPENROUTER_API_KEY", "openrouter-test-key")
-    monkeypatch.setattr(config, "AI_GATEWAY_API_KEY", "")
+    monkeypatch.setattr(config, "VERCEL_API_KEY", "")
     monkeypatch.setattr(config, "OPENROUTER_MODEL", "chosen-free-model")
     client = LLMClient()
     await client._client.aclose()
@@ -99,7 +100,7 @@ async def test_missing_keys_are_skipped_and_model_can_be_overridden(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_vercel_is_second_fallback(monkeypatch):
+async def test_vercel_is_third_fallback(monkeypatch):
     hosts = []
 
     def respond(request):

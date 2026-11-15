@@ -3,16 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ask Atomic Habits</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>reflect.</title>
+    <link rel="icon" href="/static/reflect-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
 </head>
 <body>
     <div class="app">
         <aside class="sidebar" id="sidebar" aria-label="Chat history">
             <div class="sidebar-top">
                 <div class="sidebar-brand">
-                    <img src="/static/atomic-habits-logo.png" alt="Atomic Habits logo" class="brand-logo">
-                    <span>Atomic Habits</span>
+                    <span class="reflect-mark brand-mark" aria-hidden="true">r.</span>
+                    <span>reflect.</span>
                 </div>
                 <button type="button" class="new-chat" id="newChatBtn">+ New chat</button>
             </div>
@@ -40,7 +41,20 @@
                             <path d="M4 7h16M4 12h16M4 17h16"></path>
                         </svg>
                     </button>
-                    <span class="header-title">Ask Atomic Habits</span>
+                    <span class="header-title">reflect.</span>
+                    <select id="bookSelect" aria-label="Choose book">
+                        <option value="auto" selected>Auto · best matching book</option>
+                        <option value="atomic_habits">Atomic Habits</option>
+                        <option value="tiny_habits">Tiny Habits</option>
+                        <option value="power_of_habit">The Power of Habit</option>
+                        <option value="power_of_now">The Power of Now</option>
+                        <option value="little_book_of_stoicism">The Little Book of Stoicism</option>
+                        <option value="five_second_rule">The 5 Second Rule</option>
+                        <option value="emotional_intelligence">Emotional Intelligence</option>
+                        <option value="art_of_thinking_clearly">The Art of Thinking Clearly</option>
+                        <option value="positive_thinking">The Power of Positive Thinking</option>
+                        <option value="subconscious_mind">The Power of Your Subconscious Mind</option>
+                    </select>
                 </div>
                 <div class="header-actions">
                     <div class="status" role="status" aria-live="polite">
@@ -62,10 +76,10 @@
 
             <main class="chat-container" id="chatContainer" aria-live="polite">
                 <section class="welcome-message" id="welcome">
-                    <img src="/static/atomic-habits-logo.png" alt="" class="welcome-logo">
+                    <span class="reflect-mark welcome-mark" aria-hidden="true">r.</span>
                     <span class="eyebrow">A focused reading companion</span>
                     <h1>What would you like to know?</h1>
-                    <p>Explore the ideas, examples, and chapters in <em>Atomic Habits</em>.</p>
+                    <p id="welcomeCopy">Ask about habits, growth, or anything on your mind.</p>
                 </section>
             </main>
 
@@ -74,8 +88,8 @@
                     <div class="input-wrapper">
                         <textarea
                             id="queryInput"
-                            aria-label="Ask a question about Atomic Habits"
-                            placeholder="Ask about Atomic Habits..."
+                            aria-label="Ask reflect. a question"
+                            placeholder="Ask reflect. anything..."
                             maxlength="1000"
                             rows="1"
                             autofocus
@@ -87,7 +101,7 @@
                             </svg>
                         </button>
                     </div>
-                    <p class="input-note">Answers are based on the book. Press Enter to send.</p>
+                    <p class="input-note" id="inputNote">Books and web sources are used when helpful. Press Enter to send.</p>
                 </form>
                 <div class="suggestions">
                     <button class="suggestion" onclick="askSuggestion(this)">What are the four laws of behavior change?</button>
@@ -100,12 +114,17 @@
         <aside class="pdf-panel" id="pdfPanel" aria-label="PDF source" hidden>
             <div class="pdf-panel-header">
                 <div class="pdf-panel-location">
-                    <span>Atomic Habits · <span id="pdfPage">Page 1</span></span>
+                    <span><span id="pdfBook">Atomic Habits</span> · <span id="pdfPage">Page 1</span></span>
                     <strong id="pdfTopic">Source topic</strong>
+                    <small class="pdf-highlight-note">Yellow marks the answer section in the original PDF pages.</small>
                 </div>
-                <button type="button" class="pdf-close" id="closePdfBtn" aria-label="Close PDF viewer">×</button>
+                <div class="pdf-panel-actions">
+                    <a id="pdfOpen" href="/book.pdf" target="_blank" rel="noopener noreferrer">Open highlighted PDF</a>
+                    <a id="pdfFull" href="/book.pdf" target="_blank" rel="noopener noreferrer" title="Original book without added highlights">Original book</a>
+                    <button type="button" class="pdf-close" id="closePdfBtn" aria-label="Close PDF viewer">×</button>
+                </div>
             </div>
-            <iframe id="pdfFrame" title="Atomic Habits PDF source"></iframe>
+            <iframe class="pdf-native-viewer" id="pdfFrame" title="Highlighted source PDF"></iframe>
         </aside>
     </div>
 
@@ -125,10 +144,11 @@
         <p class="settings-error" id="settingsNotice" role="status" hidden></p>
     </dialog>
 
-    <script src="/static/history.js"></script>
-    <script src="/static/settings.js"></script>
-    <script src="/static/answer_format.js"></script>
-    <script src="/static/stream_events.js"></script>
-    <script src="/static/app.js"></script>
+    <script src="/static/history.js?v={{ asset_version }}"></script>
+    <script src="/static/settings.js?v={{ asset_version }}"></script>
+    <script src="/static/answer_format.js?v={{ asset_version }}"></script>
+    <script src="/static/stream_events.js?v={{ asset_version }}"></script>
+    <script src="/static/server_status.js?v={{ asset_version }}"></script>
+    <script src="/static/app.js?v={{ asset_version }}"></script>
 </body>
 </html>

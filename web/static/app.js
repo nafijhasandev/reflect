@@ -1,5 +1,5 @@
 /**
- * Chat interface logic for Ask Atomic Habits.
+ * Chat interface logic for reflect.
  *
  * Handles:
  * - Sending queries to the /api/query endpoint
@@ -27,8 +27,83 @@ const themeToggle = document.getElementById("themeToggle");
 const themeNotice = document.getElementById("themeNotice");
 const pdfPanel = document.getElementById("pdfPanel");
 const pdfFrame = document.getElementById("pdfFrame");
+const pdfOpen = document.getElementById("pdfOpen");
+const pdfFull = document.getElementById("pdfFull");
 const pdfTopic = document.getElementById("pdfTopic");
 const pdfPage = document.getElementById("pdfPage");
+const pdfBook = document.getElementById("pdfBook");
+const bookSelect = document.getElementById("bookSelect");
+const inputNote = document.getElementById("inputNote");
+const welcomeCopy = document.getElementById("welcomeCopy");
+const suggestions = [...document.querySelectorAll(".suggestion")];
+const atomicSuggestions = suggestions.map(button => button.textContent);
+const tinySuggestions = [
+    "What is the Fogg Behavior Model?",
+    "How do anchor moments work?",
+    "Why does celebration help habits grow?",
+    "How do I make a habit tiny?",
+];
+const powerSuggestions = [
+    "What is the habit loop?",
+    "What are keystone habits?",
+    "How does Starbucks train willpower?",
+    "How do social movements form?",
+];
+const nowSuggestions = [
+    "What does Tolle mean by living in the Now?",
+    "How can I observe the thinking mind?",
+    "What is the pain-body?",
+    "What does surrender mean in this book?",
+];
+const stoicismSuggestions = [
+    "What is the Stoic dichotomy of control?",
+    "How does negative visualization work?",
+    "What is the Stoic morning routine?",
+    "How should I respond to insults?",
+];
+const fiveSecondSuggestions = [
+    "What is the 5 Second Rule?",
+    "Why does counting backward help?",
+    "How can I stop procrastinating?",
+    "What is the Wake Up Challenge?",
+];
+const emotionalIntelligenceSuggestions = [
+    "What is an emotional hijacking?",
+    "How does self-awareness support emotional intelligence?",
+    "What are the roots of empathy?",
+    "How can schools teach emotional literacy?",
+];
+const thinkingClearlySuggestions = [
+    "What is survivorship bias?",
+    "How does the sunk cost fallacy affect decisions?",
+    "What does Dobelli say about confirmation bias?",
+    "Why can overconfidence lead to bad decisions?",
+];
+const positiveThinkingSuggestions = [
+    "How can I build confidence in myself?",
+    "How can I develop a peaceful mind?",
+    "What is prayer power?",
+    "How can I break the worry habit?",
+];
+const subconsciousMindSuggestions = [
+    "How do the conscious and subconscious mind differ?",
+    "How does suggestion affect the subconscious mind?",
+    "What does Murphy say about visualization?",
+    "How can the subconscious mind help with fear?",
+];
+const suggestionsByBook = {
+    auto: ["What is the habit loop?", "What is survivorship bias?", "How can I break the worry habit?", "How does suggestion affect the subconscious mind?"],
+    atomic_habits: atomicSuggestions,
+    tiny_habits: tinySuggestions,
+    power_of_habit: powerSuggestions,
+    power_of_now: nowSuggestions,
+    little_book_of_stoicism: stoicismSuggestions,
+    five_second_rule: fiveSecondSuggestions,
+    emotional_intelligence: emotionalIntelligenceSuggestions,
+    art_of_thinking_clearly: thinkingClearlySuggestions,
+    positive_thinking: positiveThinkingSuggestions,
+    subconscious_mind: subconsciousMindSuggestions,
+};
 const escapeHtml = AnswerFormat.escapeHtml;
 
 let isStreaming = false;
@@ -113,6 +188,21 @@ function renderConversation() {
     closePdf();
     chatContainer.replaceChildren();
     const chat = currentChat();
+    if (chat) bookSelect.value = chat.book || "atomic_habits";
+    const title = AnswerFormat.bookTitle(bookSelect.value);
+    document.title = `reflect. · ${title}`;
+    welcomeCopy.textContent = bookSelect.value === "auto"
+        ? "Ask about habits, growth, or anything on your mind."
+        : `Explore the ideas, examples, and chapters in ${title}.`;
+    queryInput.placeholder = bookSelect.value === "auto" ? "Ask reflect. anything..." : `Ask about ${title}...`;
+    queryInput.setAttribute("aria-label", bookSelect.value === "auto" ? "Ask reflect. a question" : `Ask a question about ${title}`);
+    inputNote.textContent = bookSelect.value === "auto"
+        ? "Books and web sources are used when helpful. Press Enter to send."
+        : `Answers are based on ${title}. Press Enter to send.`;
+    suggestions.forEach((button, index) => {
+        button.textContent = (suggestionsByBook[bookSelect.value] || atomicSuggestions)[index];
+    });
+    checkHealth();
     mainPanel.classList.toggle("is-empty", !chat);
     if (!chat) {
         chatContainer.appendChild(welcome);
@@ -144,13 +234,28 @@ function closePdf() {
     pdfPanel.hidden = true;
     app.classList.remove("pdf-open");
     pdfFrame.removeAttribute("src");
+    pdfOpen.removeAttribute("href");
+    pdfFull.removeAttribute("href");
 }
 
-function openPdf(page, topic) {
+function openPdf(page, topic, book = "atomic_habits", chunkId = "", rangeStart, rangeEnd) {
     if (!Number.isSafeInteger(page) || page < 1) return;
-    pdfPage.textContent = `Page ${page}`;
-    pdfTopic.textContent = topic || "Atomic Habits";
-    pdfFrame.src = `/book.pdf#page=${page}`;
+    const start = Number(rangeStart);
+    const end = Number(rangeEnd);
+    const first = Number.isSafeInteger(start) && start > 0 && start <= page &&
+        Number.isSafeInteger(end) && page <= end && end - start <= 4 ? start : page;
+    const last = first === start ? end : page;
+    pdfPage.textContent = first === last ? `Page ${page}` : `Pages ${first}–${last}`;
+    pdfBook.textContent = AnswerFormat.bookTitle(book);
+    pdfTopic.textContent = topic || pdfBook.textContent;
+    const hasChunk = /^[0-9a-f]{12}(?:_[1-9][0-9]*)?$/.test(chunkId);
+    const fullPdf = book === "atomic_habits" ? `/book.pdf#page=${page}` : `/book.pdf?book=${book}#page=${page}`;
+    const highlightedPdf = `/source-page.pdf?book=${book}&chunk_id=${chunkId}`;
+    pdfFrame.src = hasChunk ? `${highlightedPdf}#page=1` : fullPdf;
+    pdfOpen.href = hasChunk ? highlightedPdf : fullPdf;
+    pdfOpen.textContent = hasChunk ? "Open highlighted PDF" : "Open source PDF";
+    pdfFull.href = fullPdf;
+    pdfFull.hidden = !hasChunk;
     pdfPanel.hidden = false;
     app.classList.add("pdf-open");
 }
@@ -159,7 +264,9 @@ function openPdf(page, topic) {
 
 async function checkHealth() {
     try {
-        const res = await fetch("/api/health");
+        const suffix = bookSelect.value === "atomic_habits" ? "" : `?book=${bookSelect.value}`;
+        const res = await fetch(`/api/health${suffix}`);
+        if (!res.ok) throw new Error("Health check failed");
         const data = await res.json();
 
         if (data.llm_configured && data.index_loaded) {
@@ -167,14 +274,16 @@ async function checkHealth() {
             statusText.textContent = `Ready · ${data.chunk_count} passages`;
         } else if (data.index_loaded) {
             statusDot.className = "dot offline";
-            statusText.textContent = "Add an API key to .env";
+            statusText.textContent = "Add a Groq, OpenRouter, or Vercel API key to .env";
         } else {
             statusDot.className = "dot offline";
-            statusText.textContent = "Index unavailable";
+            statusText.textContent = ServerStatus.missingIndexMessage(data, bookSelect.value);
         }
     } catch {
         statusDot.className = "dot offline";
-        statusText.textContent = "Server unreachable";
+        statusText.textContent = bookSelect.value === "auto"
+            ? "Restart the Python server to enable Auto"
+            : "Server unreachable";
     }
 }
 
@@ -196,13 +305,18 @@ function createAssistantMessage() {
     const msg = document.createElement("div");
     msg.className = "message assistant";
 
-    const avatar = document.createElement("img");
-    avatar.className = "assistant-avatar";
-    avatar.src = "/static/atomic-habits-logo.png";
-    avatar.alt = "";
+    const avatar = document.createElement("span");
+    avatar.className = "reflect-mark assistant-avatar";
+    avatar.textContent = "r.";
+    avatar.setAttribute("aria-hidden", "true");
 
     const bubble = document.createElement("div");
     bubble.className = "bubble";
+
+    const assistantLabel = document.createElement("div");
+    assistantLabel.className = "answer-assistant-label";
+    assistantLabel.textContent = "reflect.";
+    bubble.appendChild(assistantLabel);
 
     const loading = document.createElement("div");
     loading.className = "loading-dots";
@@ -239,6 +353,17 @@ function renderSources(bubble, sources) {
     container.appendChild(header);
 
     validSources.forEach(source => {
+        if (source.kind === "web") {
+            const url = AnswerFormat.webUrl(source);
+            if (!url) return;
+            const item = document.createElement("div");
+            item.className = "source-item";
+            item.innerHTML = `<div class="source-meta"><strong>${escapeHtml(source.title || "Web source")}</strong> ` +
+                `<a class="source-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open website</a></div>` +
+                `<div class="source-text">${escapeHtml(source.text_preview || "")}</div>`;
+            container.appendChild(item);
+            return;
+        }
         const meta = source.metadata && typeof source.metadata === "object" ? source.metadata : {};
         const chapter = String(meta.chapter || "").trim();
         const pageStart = meta.page_start || "?";
@@ -251,11 +376,11 @@ function renderSources(bubble, sources) {
         item.className = "source-item";
         item.innerHTML = `
             <div class="source-meta">
-                <strong>Atomic Habits</strong>
+                <strong>${escapeHtml(AnswerFormat.bookTitle(AnswerFormat.sourceBook(source)))}</strong>
                 ${chapterLabel ? `<strong>${escapeHtml(chapterLabel)}</strong>` : ""}
                 ${topic && topic !== chapterLabel ? `<strong>${escapeHtml(topic)}</strong>` : ""}
                 <span>Pages ${escapeHtml(pageStart)}-${escapeHtml(pageEnd)}</span>
-                ${pdfPage ? `<a class="source-link" ${AnswerFormat.sourceLink(source)}>View topic on page ${pdfPage}</a>` : ""}
+                ${pdfPage ? `<a class="source-link" ${AnswerFormat.sourceLink(source)}>View page ${pdfPage} in ${escapeHtml(AnswerFormat.bookTitle(AnswerFormat.sourceBook(source)))}</a>` : ""}
             </div>
             <div class="source-text">${escapeHtml(preview)}...</div>
         `;
@@ -272,9 +397,11 @@ async function sendQuery(question) {
 
     isStreaming = true;
     sendBtn.disabled = true;
+    bookSelect.disabled = true;
     mainPanel.classList.remove("is-empty");
     if (!activeChatId) {
         const chat = ChatHistory.create(crypto.randomUUID(), question);
+        chat.book = bookSelect.value;
         chats.push(chat);
         activeChatId = chat.id;
         renderChatList();
@@ -283,6 +410,7 @@ async function sendQuery(question) {
     recordMessage({ role: "user", text: question });
 
     const { bubble, loading } = createAssistantMessage();
+    let resolvedBook = currentChat().book;
 
     let answerDiv = null;
     let sources = null;
@@ -294,12 +422,13 @@ async function sendQuery(question) {
         const response = await fetch("/api/query", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ question }),
+            body: JSON.stringify({ question, book: currentChat().book || "atomic_habits" }),
         });
 
         if (!response.ok) {
             if (response.status === 422) {
-                requestError = "Please enter a question up to 1000 characters.";
+                const validation = await response.json().catch(() => ({}));
+                requestError = ServerStatus.validationMessage(validation);
             }
             throw new Error("Request failed");
         }
@@ -320,6 +449,10 @@ async function sendQuery(question) {
             for (const line of lines) {
                 const event = StreamEvents.parse(line);
                 if (!event) continue;
+
+                if (event.type === "book_selected") {
+                    resolvedBook = event.book;
+                }
 
                 if (event.type === "sources") {
                     sources = event.sources;
@@ -358,10 +491,14 @@ async function sendQuery(question) {
                 }
             }
         }
-    } catch {
+    } catch (error) {
+        console.error("Chat response failed", error);
         loading.remove();
         const errDiv = document.createElement("div");
         errDiv.className = "error-msg";
+        if (error.message === "Invalid server event") {
+            requestError = "Browser files are out of date. Refresh the page with Ctrl+F5 and try again.";
+        }
         errDiv.textContent = requestError;
         bubble.appendChild(errDiv);
         errorText = requestError;
@@ -378,10 +515,12 @@ async function sendQuery(question) {
             role: "assistant",
             text: [answerText, errorText].filter(Boolean).join("\n\n"),
             sources: answerText ? sources || [] : [],
+            book: resolvedBook,
             error: !answerText,
         });
         isStreaming = false;
         sendBtn.disabled = false;
+        bookSelect.disabled = false;
         queryInput.focus();
         scrollToBottom();
     }
@@ -412,11 +551,20 @@ document.getElementById("newChatBtn").addEventListener("click", () => {
     queryInput.focus();
 });
 
+bookSelect.addEventListener("change", () => {
+    if (isStreaming) return;
+    activeChatId = null;
+    renderConversation();
+    renderChatList();
+});
+
 chatContainer.addEventListener("click", event => {
     const link = event.target.closest("a[data-pdf-page]");
     if (!link || !chatContainer.contains(link)) return;
     event.preventDefault();
-    openPdf(Number(link.dataset.pdfPage), link.dataset.pdfTopic);
+    openPdf(Number(link.dataset.pdfPage), link.dataset.pdfTopic,
+        link.dataset.pdfBook, link.dataset.pdfChunk,
+        link.dataset.pdfStart, link.dataset.pdfEnd);
 });
 document.getElementById("closePdfBtn").addEventListener("click", closePdf);
 
@@ -475,4 +623,3 @@ renderChatList();
 renderConversation();
 applySettings();
 syncSidebarState();
-checkHealth();

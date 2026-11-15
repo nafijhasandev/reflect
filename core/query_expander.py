@@ -43,7 +43,7 @@ class QueryExpander:
         llm_client: An LLM client instance with an expand_query method.
     """
 
-    def __init__(self, llm_client: object) -> None:
+    def __init__(self, llm_client: object, book: str = "atomic_habits") -> None:
         """Initialize with an LLM client for generating expansions.
 
         Args:
@@ -51,6 +51,7 @@ class QueryExpander:
                 method. Typically an instance of core.llm_client.LLMClient.
         """
         self.llm_client = llm_client
+        self.book = book
 
     async def expand(self, query: str) -> list[str]:
         """Generate alternative phrasings of the query for broader retrieval.
@@ -70,7 +71,10 @@ class QueryExpander:
             return [query]
 
         try:
-            expanded = await self.llm_client.expand_query(query)
+            if self.book == "atomic_habits":
+                expanded = await self.llm_client.expand_query(query)
+            else:
+                expanded = await self.llm_client.expand_query(query, self.book)
 
             if not expanded:
                 logger.warning("LLM returned empty expansion, using original query.")

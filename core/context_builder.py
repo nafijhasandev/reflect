@@ -231,7 +231,7 @@ def build_context(
 
 
 def build_prompt(
-    query: str, context: str, query_type: str
+    query: str, context: str, query_type: str, book: str = "atomic_habits"
 ) -> list[dict[str, str]]:
     """Assemble the final message list for the chat completions API.
 
@@ -251,10 +251,10 @@ def build_prompt(
         A list of message dicts ready for the chat completions API.
     """
     system_prompt = (
-        get_prompt_template(query_type)
+        get_prompt_template(query_type, book)
         + " Answer only from the provided context. If it does not contain the"
         " answer, say that the information is not in the book."
-        + " Cite each substantive point with a chapter and page from the context."
+        + " Cite each substantive point with a chapter and page from the context, or a page if no chapter is available."
         " Do not invent citations."
     )
 
