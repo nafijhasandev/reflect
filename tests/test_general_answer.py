@@ -80,8 +80,9 @@ def test_web_search_keeps_only_public_links_with_snippets(monkeypatch):
         def __init__(self, timeout):
             assert timeout == 5
 
-        def text(self, question, max_results):
+        def text(self, question, backend, max_results):
             assert question == "habit duration"
+            assert backend == "bing,google"
             assert max_results == 4
             return [
                 {"title": "Private", "href": "http://localhost/private", "body": "skip"},
@@ -95,3 +96,18 @@ def test_web_search_keeps_only_public_links_with_snippets(monkeypatch):
         "kind": "web", "index": 1, "title": "Study",
         "url": "https://example.org/study", "text_preview": "Habits vary.",
     }]
+
+
+def test_habit_breaking_search_uses_research_terms(monkeypatch):
+    from core.web_search import _search
+
+    class FakeDDGS:
+        def __init__(self, timeout):
+            pass
+
+        def text(self, question, backend, max_results):
+            assert question == "breaking old habits timeline psychology research"
+            return []
+
+    monkeypatch.setitem(sys.modules, "ddgs", SimpleNamespace(DDGS=FakeDDGS))
+    assert _search("how long it takes to get over a habit?") == []

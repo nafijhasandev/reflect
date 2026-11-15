@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 from urllib.parse import urlparse
 
 import config
@@ -12,7 +13,12 @@ logger = logging.getLogger(__name__)
 def _search(question: str) -> list[dict]:
     from ddgs import DDGS
 
-    results = DDGS(timeout=5).text(question, max_results=4)
+    search_query = question
+    if (re.search(r"\b(?:how long|duration)\b", question, re.IGNORECASE)
+            and re.search(r"\bhabits?\b", question, re.IGNORECASE)
+            and re.search(r"\b(?:break|quit|stop|get over)\b", question, re.IGNORECASE)):
+        search_query = "breaking old habits timeline psychology research"
+    results = DDGS(timeout=5).text(search_query, backend="bing,google", max_results=4)
     sources = []
     for item in results:
         url = str(item.get("href") or "").strip()
