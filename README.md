@@ -19,14 +19,14 @@ reflect. searches ten locally indexed books for relevant passages, then presents
 
 ```mermaid
 flowchart LR
-    PDF[Book PDFs] --> ING[Extract · chunk · embed] --> IDX[(ChromaDB + BM25)]
+    PDF[Book PDFs] --> IDX[(Local indexes)]
     Q[Question] --> ROUTE{Route}
-    ROUTE -->|Book| SEARCH[Retrieve · fuse · rerank]
+    ROUTE -->|Book| SEARCH[Search + rerank]
     IDX --> SEARCH
-    ROUTE -->|General| WEB[Optional web search]
-    SEARCH --> ANSWER[Generate · check citations]
+    ROUTE -->|General| WEB[Web search]
+    SEARCH --> ANSWER[LLM + citations]
     WEB --> ANSWER
-    ANSWER --> UI[Stream answer + sources]
+    ANSWER --> UI[Chat + sources]
 ```
 
 Ingestion runs locally and writes one vector collection, BM25 index, and chunk snapshot per book under `data/`. At query time, the router selects a relevant book in **Auto** mode. General questions can bypass book retrieval. [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) explains each stage.
